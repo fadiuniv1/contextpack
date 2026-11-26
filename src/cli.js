@@ -189,6 +189,7 @@ export function formatMarkdown(ctx) {
     '',
     '> Token counts are local estimates. No code was uploaded.',
     '',
+    ...(meta.structure ? ['## Structure', '', '```', meta.structure, '```', ''] : []),
     '## Contents',
     '',
   ];
@@ -270,6 +271,7 @@ export function main(argv) {
       maxLines: options.maxLines,
       respectGitignore: options.respectGitignore,
       redact: options.redact,
+      date: options.date,
     });
 
     const output = options.list

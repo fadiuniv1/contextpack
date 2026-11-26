@@ -6,6 +6,19 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-26
+
+### Added
+
+- `--profile` presets for 8k / 32k / 128k / 200k budgets.
+- `--no-date` for reproducible output.
+- ASCII directory tree of selected files in Markdown and JSON output.
+- Support for `.ignore` files alongside `.gitignore`.
+
+### Changed
+
+- npm package is published as `contextpack-cli`; the command remains `contextpack`.
+
 ### Fixed
 
 - `--diff=<ref>` now uses the inline ref instead of falling back to `HEAD`.

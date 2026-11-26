@@ -93,9 +93,11 @@ export function collectFiles(root, options = {}) {
 
     let rules = inheritedRules;
     if (respectGitignore) {
-      const ignorePath = path.join(currentDir, '.gitignore');
-      if (fs.existsSync(ignorePath) && fs.statSync(ignorePath).isFile()) {
-        rules = [...rules, ...parseIgnoreFile(fs.readFileSync(ignorePath, 'utf8'), relDir)];
+      for (const filename of ['.gitignore', '.ignore']) {
+        const ignorePath = path.join(currentDir, filename);
+        if (fs.existsSync(ignorePath) && fs.statSync(ignorePath).isFile()) {
+          rules = [...rules, ...parseIgnoreFile(fs.readFileSync(ignorePath, 'utf8'), relDir)];
+        }
       }
     }
 
@@ -200,6 +202,36 @@ export function changedFiles(root, ref = 'HEAD') {
   return names;
 }
 
+/** Render the selected files as an ASCII directory tree. */
+export function fileTree(paths) {
+  const root = {};
+  for (const filePath of paths) {
+    const parts = filePath.split('/');
+    let node = root;
+    for (let i = 0; i < parts.length; i += 1) {
+      const part = parts[i];
+      if (i === parts.length - 1) {
+        node[part] = null;
+      } else {
+        if (!node[part] || typeof node[part] !== 'object') node[part] = {};
+        node = node[part];
+      }
+    }
+  }
+
+  const lines = [];
+  function render(node, prefix) {
+    const entries = Object.entries(node).sort(([a], [b]) => a.localeCompare(b, 'en'));
+    entries.forEach(([name, child], index) => {
+      const last = index === entries.length - 1;
+      lines.push(`${prefix}${last ? '└── ' : '├── '}${name}`);
+      if (child) render(child, `${prefix}${last ? '    ' : '│   '}`);
+    });
+  }
+  render(root, '');
+  return lines.join('\n');
+}
+
 function scoreFile(rel, depth, focus, changed) {
   let score = 0;
   if (changed && changed.has(rel)) score += 20000;
@@ -234,6 +266,7 @@ export function buildContext(root, options = {}) {
     maxBytes = DEFAULT_MAX_BYTES,
     maxFiles = DEFAULT_MAX_FILES,
     diff = undefined,
+    date = true,
   } = options;
 
   if (!Number.isFinite(budget) || budget < 0) throw new Error('budget must be a non-negative number');
@@ -286,7 +319,8 @@ export function buildContext(root, options = {}) {
   return {
     meta: {
       root: path.basename(path.resolve(root)),
-      generated: new Date().toISOString(),
+      generated: date ? new Date().toISOString() : null,
+      structure: fileTree(selected.map((item) => item.rel)),
       budget,
       usedTokens: used,
       totalTokens: items.reduce((sum, item) => sum + item.tokens, 0),

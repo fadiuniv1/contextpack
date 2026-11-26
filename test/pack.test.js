@@ -112,7 +112,32 @@ test('parseArgs handles flags and validates values', () => {
 
   assert.throws(() => parseArgs(['--budget', 'abc']), /Invalid budget/);
   assert.throws(() => parseArgs(['--format', 'xml']), /Unknown format/);
+  assert.equal(parseArgs(['--profile', '32k']).budget, 32000);
+  assert.equal(parseArgs(['--profile', '8k', '-b', '500']).budget, 500);
+  assert.equal(parseArgs(['--no-date']).date, false);
+  assert.throws(() => parseArgs(['--profile', 'nope']), /Unknown profile/);
   assert.throws(() => parseArgs(['--unknown']), /Unknown option/);
+});
+
+test('.ignore files are respected alongside .gitignore', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('.ignore', 'generated.js\n');
+  tmp.write('keep.js', 'a');
+  tmp.write('generated.js', 'b');
+  assert.deepEqual(collectFiles(tmp.dir).map((f) => f.rel), ['keep.js']);
+});
+
+test('context includes a directory tree and optional deterministic timestamp', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('src/a.js', 'a');
+  tmp.write('src/deep/b.js', 'b');
+
+  const ctx = buildContext(tmp.dir, { date: false, budget: 0 });
+  assert.equal(ctx.meta.generated, null);
+  assert.match(ctx.meta.structure, /└── src/);
+  assert.match(ctx.meta.structure, /└── deep/);
 });
 
 test('changedFiles finds modified and untracked files', (t) => {

@@ -5,7 +5,7 @@
 No API keys. No uploads. No dependencies. One command.
 
 ```bash
-npx contextpack . --budget 8000 -o context.md
+npx contextpack-cli . --budget 8000 -o context.md
 ```
 
 ---
@@ -54,15 +54,17 @@ export function estimateTokens(text) { ... }
 Run it without installing:
 
 ```bash
-npx contextpack .
+npx contextpack-cli .
 ```
 
 Or install globally:
 
 ```bash
-npm install -g contextpack
+npm install -g contextpack-cli
 contextpack .
 ```
+
+> The npm package is named `contextpack-cli` (the `contextpack` name was taken); the command you run is still `contextpack`.
 
 Requires Node.js 18+. Works on Windows, macOS and Linux.
 
@@ -83,7 +85,9 @@ contextpack [path] [options]
 | `--format <fmt>` | `markdown`, `plain` or `json` (default: `markdown`) |
 | `--list` | Show every candidate file with its token cost |
 | `--max-lines <n>` | Truncate files longer than *n* lines (default: `2000`) |
-| `--no-gitignore` | Ignore `.gitignore` rules |
+| `--profile <name>` | Preset budget: `8k`, `32k`, `128k`, `200k` |
+| `--no-date` | Omit the timestamp for reproducible, diffable output |
+| `--no-gitignore` | Ignore `.gitignore` and `.ignore` rules |
 | `--no-redact` | Disable secret redaction |
 | `-v, --version` | Print version |
 | `-h, --help` | Show help |
@@ -150,7 +154,9 @@ Files are scored, sorted by score (then by size), then added until the budget is
 4. Test, fixture and snapshot files rank slightly lower.
 5. Shallower files rank above deeply nested ones; smaller files win ties.
 
-Skipped automatically: `.git`, `node_modules`, `dist`, `build`, `coverage`, `.next`, virtualenvs, lockfiles, binary files, images, archives and anything matched by `.gitignore` (including nested `.gitignore` files).
+The output also includes a compact **directory tree** of the selected files, so the model can see structure without paying for every filename in prose.
+
+Skipped automatically: `.git`, `node_modules`, `dist`, `build`, `coverage`, `.next`, virtualenvs, lockfiles, binary files, images, archives and anything matched by `.gitignore` or `.ignore` (including nested ignore files).
 
 ## Token counts and privacy
 
@@ -182,7 +188,7 @@ console.log(formatMarkdown(ctx));
 | File relevance ranking | yes | sorts by git change frequency |
 | Exact tokenizer counts | no (local estimate, ±15%) | yes (tiktoken) |
 | Output styles | Markdown, plain, JSON | XML, Markdown, JSON, plain + more |
-| Setup | `npx contextpack .` | `npx repomix` |
+| Setup | `npx contextpack-cli .` | `npx repomix` |
 
 [gitingest](https://github.com/cyclotruc/gitingest) and [code2prompt](https://github.com/mrfearless/code2prompt) are also good options if you prefer their ecosystems or templating.
 
