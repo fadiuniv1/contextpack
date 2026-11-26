@@ -6,7 +6,7 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
-## [0.1.3] - 2026-11-26
+## [0.1.4] - 2026-11-26
 
 ### Added
 

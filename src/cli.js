@@ -3,7 +3,7 @@ import path from 'node:path';
 import { buildContext, DEFAULT_BUDGET, DEFAULT_MAX_LINES } from './pack.js';
 import { languageOf } from './pack.js';
 
-const VERSION = '0.1.3';
+const VERSION = '0.1.4';
 
 const PROFILES = { '8k': 8000, '32k': 32000, '128k': 128000, '200k': 200000 };
 
