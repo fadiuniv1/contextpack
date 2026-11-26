@@ -170,14 +170,23 @@ console.log(formatMarkdown(ctx));
 
 ## How it compares
 
-| Tool | Focus | Dependencies | Token budget | Diff mode | Secret redaction |
-| --- | --- | --- | --- | --- | --- |
-| **contextpack** | Small, ranked, budget-aware context | none | yes | yes | yes |
-| `repomix` | Full repo snapshots, many output styles | several | limited | no | built-in |
-| `gitingest` | Hosted / CLI repo ingestion | Python | limited | no | basic |
-| `code2prompt` | Handlebars templates, many formats | several | limited | no | basic |
+[repomix](https://github.com/yamadashy/repomix) is the mature general-purpose tool: exact tokenizer counts, compression, MCP, remote repos, many output styles. Use it when you want the whole repository.
 
-Use the others when you want every file or a custom template. Use `contextpack` when you want a short, relevant, reviewable prompt — fast.
+`contextpack` is deliberately narrower:
+
+| | contextpack | repomix |
+| --- | --- | --- |
+| Runtime dependencies | **none** | several |
+| Fits output to a token budget | **yes — omits low-priority files** | guard only: fails if output exceeds budget |
+| Only changed files (`--diff`) | **yes** | adds diffs to the full tree |
+| File relevance ranking | yes | sorts by git change frequency |
+| Exact tokenizer counts | no (local estimate, ±15%) | yes (tiktoken) |
+| Output styles | Markdown, plain, JSON | XML, Markdown, JSON, plain + more |
+| Setup | `npx contextpack .` | `npx repomix` |
+
+[gitingest](https://github.com/cyclotruc/gitingest) and [code2prompt](https://github.com/mrfearless/code2prompt) are also good options if you prefer their ecosystems or templating.
+
+Use `contextpack` when you want a short, relevant, reviewable prompt and nothing else.
 
 ## Roadmap
 
