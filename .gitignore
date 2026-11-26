@@ -1,0 +1,10 @@
+node_modules/
+coverage/
+.nyc_output/
+*.log
+.DS_Store
+.idea/
+.vscode/
+context.md
+context.json
+*.tgz

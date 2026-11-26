@@ -1,0 +1,49 @@
+{
+  "name": "contextpack",
+  "version": "0.1.0",
+  "description": "Pack a repository into a token-budgeted Markdown file for LLMs and coding agents. Zero dependencies.",
+  "type": "module",
+  "bin": {
+    "contextpack": "bin/contextpack.js"
+  },
+  "main": "src/pack.js",
+  "exports": {
+    ".": "./src/pack.js",
+    "./cli": "./src/cli.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "node --test",
+    "start": "node bin/contextpack.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "llm",
+    "context",
+    "prompt",
+    "ai",
+    "repo",
+    "token",
+    "cli",
+    "agents",
+    "rag",
+    "markdown"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fadiu/contextpack.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fadiu/contextpack/issues"
+  },
+  "homepage": "https://github.com/fadiu/contextpack#readme"
+}

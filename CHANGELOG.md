@@ -1,0 +1,20 @@
+# Changelog
+
+All notable changes to this project are documented here. This project follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [0.1.0] - 2026-11-26
+
+### Added
+
+- First release.
+- Repository walking with nested `.gitignore` support.
+- Token-budgeted file selection with relevance ranking and `--focus`.
+- `--diff` mode for changed and untracked files.
+- `--include`, `--exclude`, `--list`, `--max-lines` and `--no-gitignore`.
+- Markdown, plain text and JSON output formats.
+- Secret redaction for common key formats and private key blocks.
+- Zero runtime dependencies and a Node.js test suite.

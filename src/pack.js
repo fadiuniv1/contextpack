@@ -1,0 +1,301 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { matchesAny, toPosix } from './glob.js';
+import { isIgnored, parseIgnoreFile } from './gitignore.js';
+import { countLines, estimateTokens } from './tokens.js';
+import { redactSecrets } from './redact.js';
+
+export const DEFAULT_BUDGET = 8000;
+export const DEFAULT_MAX_BYTES = 512 * 1024;
+export const DEFAULT_MAX_LINES = 2000;
+export const DEFAULT_MAX_FILES = 3000;
+
+const SKIP_DIRS = new Set([
+  '.git', '.svn', '.hg', 'node_modules', 'dist', 'build', 'out', 'coverage',
+  '.next', '.nuxt', '.cache', '.turbo', '.svelte-kit', '.angular', 'vendor',
+  '__pycache__', '.venv', 'venv', '.idea', '.vscode', '.pytest_cache',
+  '.mypy_cache', '.terraform', '.gradle', 'target', 'obj',
+]);
+
+const SKIP_EXT = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.svg', '.pdf', '.zip',
+  '.gz', '.tar', '.7z', '.rar', '.woff', '.woff2', '.ttf', '.eot', '.mp3',
+  '.mp4', '.mov', '.wasm', '.pyc', '.class', '.jar', '.exe', '.dll', '.so',
+  '.db', '.sqlite', '.parquet', '.pickle', '.lock',
+]);
+
+const SKIP_NAMES = new Set([
+  'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml', 'poetry.lock',
+  'Cargo.lock', 'Gemfile.lock', 'composer.lock', '.DS_Store',
+]);
+
+const CODE_EXT = new Set([
+  '.js', '.mjs', '.cjs', '.jsx', '.ts', '.tsx', '.py', '.go', '.rs', '.java',
+  '.kt', '.rb', '.php', '.c', '.h', '.cpp', '.hpp', '.cs', '.swift', '.sh',
+  '.bash', '.ps1', '.sql', '.vue', '.svelte', '.proto', '.graphql', '.tf', '.hcl',
+]);
+
+const DOC_EXT = new Set(['.md', '.mdx', '.txt', '.rst']);
+const CONFIG_EXT = new Set(['.json', '.toml', '.yaml', '.yml', '.ini', '.env', '.xml', '.properties']);
+
+const SPECIAL_NAMES = new Set([
+  'readme.md', 'agents.md', 'claude.md', 'package.json', 'pyproject.toml',
+  'cargo.toml', 'go.mod', 'makefile', 'dockerfile', 'compose.yaml',
+  'compose.yml', '.env.example', '.env.sample', 'justfile',
+]);
+
+const LANGUAGES = {
+  '.js': 'js', '.mjs': 'js', '.cjs': 'js', '.jsx': 'jsx', '.ts': 'ts', '.tsx': 'tsx',
+  '.py': 'python', '.go': 'go', '.rs': 'rust', '.java': 'java', '.kt': 'kotlin',
+  '.rb': 'ruby', '.php': 'php', '.c': 'c', '.h': 'c', '.cpp': 'cpp', '.hpp': 'cpp',
+  '.cs': 'csharp', '.swift': 'swift', '.sh': 'bash', '.bash': 'bash', '.ps1': 'powershell',
+  '.sql': 'sql', '.vue': 'vue', '.svelte': 'svelte', '.proto': 'protobuf',
+  '.graphql': 'graphql', '.tf': 'hcl', '.hcl': 'hcl', '.md': 'markdown', '.mdx': 'mdx',
+  '.txt': 'text', '.rst': 'rst', '.json': 'json', '.toml': 'toml', '.yaml': 'yaml',
+  '.yml': 'yaml', '.ini': 'ini', '.xml': 'xml', '.env': 'dotenv', '.html': 'html',
+  '.css': 'css', '.scss': 'scss', '.dockerfile': 'dockerfile',
+};
+
+export function languageOf(relPath) {
+  const base = path.basename(relPath).toLowerCase();
+  if (base === 'dockerfile' || base === 'makefile') return base === 'dockerfile' ? 'dockerfile' : 'makefile';
+  return LANGUAGES[path.extname(relPath).toLowerCase()] || '';
+}
+
+function isBinary(buffer) {
+  const limit = Math.min(buffer.length, 1024);
+  for (let i = 0; i < limit; i += 1) {
+    if (buffer[i] === 0) return true;
+  }
+  return false;
+}
+
+/** Walk the tree and return candidate files as { rel, abs }. */
+export function collectFiles(root, options = {}) {
+  const {
+    include = [],
+    exclude = [],
+    respectGitignore = true,
+    maxBytes = DEFAULT_MAX_BYTES,
+    maxFiles = DEFAULT_MAX_FILES,
+  } = options;
+
+  const absoluteRoot = path.resolve(root);
+  if (!fs.existsSync(absoluteRoot) || !fs.statSync(absoluteRoot).isDirectory()) {
+    throw new Error(`Not a directory: ${absoluteRoot}`);
+  }
+
+  const found = [];
+
+  function walk(currentDir, relDir, inheritedRules) {
+    if (found.length >= maxFiles) return;
+
+    let rules = inheritedRules;
+    if (respectGitignore) {
+      const ignorePath = path.join(currentDir, '.gitignore');
+      if (fs.existsSync(ignorePath) && fs.statSync(ignorePath).isFile()) {
+        rules = [...rules, ...parseIgnoreFile(fs.readFileSync(ignorePath, 'utf8'), relDir)];
+      }
+    }
+
+    let entries;
+    try {
+      entries = fs.readdirSync(currentDir, { withFileTypes: true });
+    } catch (error) {
+      throw new Error(`Cannot read ${currentDir}: ${error.message}`);
+    }
+    entries.sort((a, b) => a.name.localeCompare(b.name, 'en'));
+
+    for (const entry of entries) {
+      if (found.length >= maxFiles) return;
+      if (entry.isSymbolicLink()) continue;
+
+      const name = entry.name;
+      const rel = relDir ? `${relDir}/${name}` : name;
+      const abs = path.join(currentDir, name);
+
+      if (entry.isDirectory()) {
+        if (SKIP_DIRS.has(name.toLowerCase())) continue;
+        if (name.startsWith('.') && name !== '.github') continue;
+        if (isIgnored(rel, true, rules)) continue;
+        walk(abs, rel, rules);
+        continue;
+      }
+
+      if (!entry.isFile()) continue;
+      if (name.startsWith('.') && !['.env.example', '.env.sample'].includes(name)) continue;
+      if (isIgnored(rel, false, rules)) continue;
+      if (include.length > 0 && !matchesAny(rel, include)) continue;
+      if (matchesAny(rel, exclude)) continue;
+      if (SKIP_NAMES.has(name)) continue;
+      if (SKIP_EXT.has(path.extname(name).toLowerCase())) continue;
+
+      let stat;
+      try {
+        stat = fs.statSync(abs);
+      } catch {
+        continue;
+      }
+      if (!stat.isFile() || stat.size > maxBytes) continue;
+
+      let buffer;
+      try {
+        buffer = fs.readFileSync(abs);
+      } catch {
+        continue;
+      }
+      if (isBinary(buffer)) continue;
+
+      found.push({ rel, abs, bytes: stat.size });
+    }
+  }
+
+  walk(absoluteRoot, '', []);
+  return found;
+}
+
+function git(args, cwd) {
+  return execFileSync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
+/** Changed files (staged, unstaged and untracked) relative to the given root. */
+export function changedFiles(root, ref = 'HEAD') {
+  const absoluteRoot = path.resolve(root);
+  let top;
+  try {
+    top = git(['rev-parse', '--show-toplevel'], absoluteRoot).trim();
+  } catch {
+    throw new Error(`--diff needs a git repository. No git repository found at ${absoluteRoot}.`);
+  }
+
+  const prefix = toPosix(path.relative(top, absoluteRoot)).replace(/^\.\/?/, '');
+  const inRoot = (p) => (prefix ? p.startsWith(`${prefix}/`) : true);
+  const toRel = (p) => (prefix ? p.slice(prefix.length + 1) : p);
+
+  const names = new Set();
+  let diffOutput = '';
+  try {
+    diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--'], absoluteRoot);
+  } catch {
+    throw new Error(`git diff failed for ref "${ref}". Check that the ref exists.`);
+  }
+  for (const line of diffOutput.split(/\r?\n/)) {
+    if (!line) continue;
+    const p = toPosix(line);
+    if (inRoot(p)) names.add(toRel(p));
+  }
+
+  const untracked = git(['ls-files', '--others', '--exclude-standard'], absoluteRoot);
+  for (const line of untracked.split(/\r?\n/)) {
+    if (!line) continue;
+    const p = toPosix(line);
+    if (inRoot(p)) names.add(toRel(p));
+  }
+
+  return names;
+}
+
+function scoreFile(rel, depth, focus, changed) {
+  let score = 0;
+  if (changed && changed.has(rel)) score += 20000;
+  if (matchesAny(rel, focus)) score += 10000;
+
+  const ext = path.extname(rel).toLowerCase();
+  if (CODE_EXT.has(ext)) score += 100;
+  else if (DOC_EXT.has(ext)) score += 70;
+  else if (CONFIG_EXT.has(ext)) score += 60;
+  else score += 10;
+
+  const base = path.basename(rel).toLowerCase();
+  if (SPECIAL_NAMES.has(base)) score += 120;
+  if (/(^|[-_.])(test|spec|fixture|snapshot)([-_.]|$)/.test(base)) score -= 40;
+
+  return score - depth * 3;
+}
+
+/**
+ * Build the context object. It is pure data: formatting lives in cli.js so the
+ * core can be imported by other tools.
+ */
+export function buildContext(root, options = {}) {
+  const {
+    budget = DEFAULT_BUDGET,
+    focus = [],
+    include = [],
+    exclude = [],
+    respectGitignore = true,
+    redact = true,
+    maxLines = DEFAULT_MAX_LINES,
+    maxBytes = DEFAULT_MAX_BYTES,
+    maxFiles = DEFAULT_MAX_FILES,
+    diff = undefined,
+  } = options;
+
+  if (!Number.isFinite(budget) || budget < 0) throw new Error('budget must be a non-negative number');
+  if (!Number.isInteger(maxLines) || maxLines < 1) throw new Error('maxLines must be a positive integer');
+
+  const changed = diff === undefined ? null : changedFiles(root, diff || 'HEAD');
+  let files = collectFiles(root, { include, exclude, respectGitignore, maxBytes, maxFiles });
+  if (changed) {
+    files = files.filter((file) => changed.has(file.rel));
+    if (files.length === 0) {
+      throw new Error('No changed text files found. Nothing to pack.');
+    }
+  }
+
+  const items = files.map((file) => {
+    let content = fs.readFileSync(file.abs, 'utf8');
+    const originalLines = countLines(content);
+    if (maxLines && originalLines > maxLines) {
+      const kept = content.split('\n').slice(0, maxLines).join('\n');
+      content = `${kept}\n… [${originalLines - maxLines} more lines omitted by contextpack]`;
+    }
+    content = redactSecrets(content, redact);
+    return {
+      rel: file.rel,
+      content,
+      tokens: estimateTokens(content),
+      lines: Math.min(originalLines, maxLines || originalLines),
+      depth: file.rel.split('/').length - 1,
+    };
+  });
+
+  items.sort((a, b) => {
+    const sa = scoreFile(a.rel, a.depth, focus, changed);
+    const sb = scoreFile(b.rel, b.depth, focus, changed);
+    return sb - sa || a.tokens - b.tokens || a.rel.localeCompare(b.rel, 'en');
+  });
+
+  const selected = [];
+  const skipped = [];
+  let used = 0;
+  for (const item of items) {
+    if (budget === 0 || used + item.tokens <= budget || selected.length === 0) {
+      selected.push(item);
+      used += item.tokens;
+    } else {
+      skipped.push(item);
+    }
+  }
+
+  return {
+    meta: {
+      root: path.basename(path.resolve(root)),
+      generated: new Date().toISOString(),
+      budget,
+      usedTokens: used,
+      totalTokens: items.reduce((sum, item) => sum + item.tokens, 0),
+      candidates: items.length,
+      included: selected.length,
+      omitted: skipped.length,
+      mode: changed ? 'diff' : 'full',
+    },
+    files: selected,
+    skipped,
+  };
+}
