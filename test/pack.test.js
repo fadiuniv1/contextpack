@@ -140,6 +140,18 @@ test('context includes a directory tree and optional deterministic timestamp', (
   assert.match(ctx.meta.structure, /└── deep/);
 });
 
+test('--task boosts files that match the task keywords', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('README.md', '# Demo');
+  tmp.write('src/auth.js', 'export function refreshToken() { return token; }');
+  tmp.write('src/ui.js', 'export function renderButton() {}');
+
+  const ctx = buildContext(tmp.dir, { task: 'fix auth token refresh', budget: 0 });
+  assert.equal(ctx.files[0].rel, 'src/auth.js');
+  assert.equal(ctx.meta.task, 'fix auth token refresh');
+});
+
 test('changedFiles finds modified and untracked files', (t) => {
   const tmp = tempDir();
   t.after(tmp.cleanup);

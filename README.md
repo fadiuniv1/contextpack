@@ -86,6 +86,7 @@ contextpack [path] [options]
 | `--list` | Show every candidate file with its token cost |
 | `--max-lines <n>` | Truncate files longer than *n* lines (default: `2000`) |
 | `--profile <name>` | Preset budget: `8k`, `32k`, `128k`, `200k` |
+| `--task <text>` | Boost files relevant to a task, e.g. `--task "fix auth refresh"` |
 | `--no-date` | Omit the timestamp for reproducible, diffable output |
 | `--no-gitignore` | Ignore `.gitignore` and `.ignore` rules |
 | `--no-redact` | Disable secret redaction |

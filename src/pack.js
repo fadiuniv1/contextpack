@@ -250,6 +250,24 @@ function scoreFile(rel, depth, focus, changed) {
   return score - depth * 3;
 }
 
+const STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'how', 'why',
+  'what', 'fix', 'help', 'make', 'work', 'use', 'using', 'please', 'about',
+]);
+
+export function taskTerms(task) {
+  if (!task) return [];
+  return [...new Set(String(task).toLowerCase().match(/[a-z_][\w-]{2,}/g) || [])]
+    .filter((word) => !STOPWORDS.has(word));
+}
+
+function taskRelevance(item, terms) {
+  if (terms.length === 0) return 0;
+  const haystack = `${item.rel}\n${item.content}`.toLowerCase();
+  const hits = terms.reduce((sum, term) => sum + (haystack.includes(term) ? 1 : 0), 0);
+  return Math.min(1500, hits * 60);
+}
+
 /**
  * Build the context object. It is pure data: formatting lives in cli.js so the
  * core can be imported by other tools.
@@ -267,11 +285,13 @@ export function buildContext(root, options = {}) {
     maxFiles = DEFAULT_MAX_FILES,
     diff = undefined,
     date = true,
+    task = '',
   } = options;
 
   if (!Number.isFinite(budget) || budget < 0) throw new Error('budget must be a non-negative number');
   if (!Number.isInteger(maxLines) || maxLines < 1) throw new Error('maxLines must be a positive integer');
 
+  const terms = taskTerms(task);
   const changed = diff === undefined ? null : changedFiles(root, diff || 'HEAD');
   let files = collectFiles(root, { include, exclude, respectGitignore, maxBytes, maxFiles });
   if (changed) {
@@ -298,9 +318,11 @@ export function buildContext(root, options = {}) {
     };
   });
 
+  for (const item of items) item.taskScore = taskRelevance(item, terms);
+
   items.sort((a, b) => {
-    const sa = scoreFile(a.rel, a.depth, focus, changed);
-    const sb = scoreFile(b.rel, b.depth, focus, changed);
+    const sa = scoreFile(a.rel, a.depth, focus, changed) + a.taskScore;
+    const sb = scoreFile(b.rel, b.depth, focus, changed) + b.taskScore;
     return sb - sa || a.tokens - b.tokens || a.rel.localeCompare(b.rel, 'en');
   });
 
@@ -328,6 +350,7 @@ export function buildContext(root, options = {}) {
       included: selected.length,
       omitted: skipped.length,
       mode: changed ? 'diff' : 'full',
+      task: task || null,
     },
     files: selected,
     skipped,

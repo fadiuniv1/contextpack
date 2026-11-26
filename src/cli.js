@@ -16,6 +16,7 @@ Options:
   -o, --out <file>       Write to a file instead of stdout
   -b, --budget <n>       Token budget, 0 = unlimited (default: ${DEFAULT_BUDGET})
       --profile <name>   8k | 32k | 128k | 200k preset budget
+      --task <text>      Boost files relevant to a task, e.g. "fix auth token refresh"
   -f, --focus <glob>     Prioritize matching files (repeatable)
   -i, --include <glob>   Only consider matching files (repeatable)
   -e, --exclude <glob>   Skip matching files (repeatable)
@@ -60,6 +61,7 @@ export function parseArgs(argv) {
     redact: true,
     date: true,
     profile: null,
+    task: '',
     budgetExplicit: false,
     help: false,
     version: false,
@@ -104,6 +106,9 @@ export function parseArgs(argv) {
         options.profile = name;
         break;
       }
+      case '--task':
+        options.task = take();
+        break;
       case '--no-date':
         options.date = false;
         break;
@@ -272,6 +277,7 @@ export function main(argv) {
       respectGitignore: options.respectGitignore,
       redact: options.redact,
       date: options.date,
+      task: options.task,
     });
 
     const output = options.list
