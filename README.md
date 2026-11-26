@@ -201,7 +201,7 @@ Ideas and PRs welcome — open an issue first for anything big.
 ## Contributing
 
 ```bash
-git clone https://github.com/fadiu/contextpack.git
+git clone https://github.com/fadiuniv1/contextpack.git
 cd contextpack
 npm test
 ```

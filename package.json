@@ -40,10 +40,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fadiu/contextpack.git"
+    "url": "git+https://github.com/fadiuniv1/contextpack.git"
   },
   "bugs": {
-    "url": "https://github.com/fadiu/contextpack/issues"
+    "url": "https://github.com/fadiuniv1/contextpack/issues"
   },
-  "homepage": "https://github.com/fadiu/contextpack#readme"
+  "homepage": "https://github.com/fadiuniv1/contextpack#readme"
 }

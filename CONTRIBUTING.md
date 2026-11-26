@@ -5,7 +5,7 @@ Thanks for helping improve contextpack.
 ## Setup
 
 ```bash
-git clone https://github.com/fadiu/contextpack.git
+git clone https://github.com/fadiuniv1/contextpack.git
 cd contextpack
 npm test
 ```
