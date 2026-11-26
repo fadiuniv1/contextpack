@@ -79,7 +79,7 @@ contextpack [path] [options]
 | `-f, --focus <glob>` | Prioritize matching files (repeatable) |
 | `-i, --include <glob>` | Only consider matching files (repeatable) |
 | `-e, --exclude <glob>` | Skip matching files (repeatable) |
-| `--diff [ref]` | Pack only changed files; compares to `HEAD` by default |
+| `--diff [ref]` | Pack only changed files; compares to `HEAD` by default. Also accepts `--diff=<ref>` |
 | `--format <fmt>` | `markdown`, `plain` or `json` (default: `markdown`) |
 | `--list` | Show every candidate file with its token cost |
 | `--max-lines <n>` | Truncate files longer than *n* lines (default: `2000`) |
