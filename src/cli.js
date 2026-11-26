@@ -3,7 +3,9 @@ import path from 'node:path';
 import { buildContext, DEFAULT_BUDGET, DEFAULT_MAX_LINES } from './pack.js';
 import { languageOf } from './pack.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.3';
+
+const PROFILES = { '8k': 8000, '32k': 32000, '128k': 128000, '200k': 200000 };
 
 const HELP = `contextpack — pack a repository into a token-budgeted Markdown file for LLMs
 
@@ -13,6 +15,7 @@ Usage:
 Options:
   -o, --out <file>       Write to a file instead of stdout
   -b, --budget <n>       Token budget, 0 = unlimited (default: ${DEFAULT_BUDGET})
+      --profile <name>   8k | 32k | 128k | 200k preset budget
   -f, --focus <glob>     Prioritize matching files (repeatable)
   -i, --include <glob>   Only consider matching files (repeatable)
   -e, --exclude <glob>   Skip matching files (repeatable)
@@ -22,6 +25,7 @@ Options:
       --max-lines <n>    Truncate files above n lines (default: ${DEFAULT_MAX_LINES})
       --no-gitignore     Do not apply .gitignore rules
       --no-redact        Do not redact secrets
+      --no-date          Omit the timestamp for reproducible output
   -v, --version          Print version
   -h, --help             Show this help
 
@@ -54,6 +58,9 @@ export function parseArgs(argv) {
     maxLines: DEFAULT_MAX_LINES,
     respectGitignore: true,
     redact: true,
+    date: true,
+    profile: null,
+    budgetExplicit: false,
     help: false,
     version: false,
   };
@@ -89,6 +96,16 @@ export function parseArgs(argv) {
       case '-b':
       case '--budget':
         options.budget = number(take(), 'budget');
+        options.budgetExplicit = true;
+        break;
+      case '--profile': {
+        const name = take().toLowerCase();
+        if (!PROFILES[name]) throw new UsageError(`Unknown profile "${name}". Use 8k, 32k, 128k or 200k.`);
+        options.profile = name;
+        break;
+      }
+      case '--no-date':
+        options.date = false;
         break;
       case '-f':
       case '--focus':
@@ -103,12 +120,16 @@ export function parseArgs(argv) {
         options.exclude.push(take());
         break;
       case '--diff': {
-        const next = argv[i + 1];
-        if (next && !next.startsWith('-')) {
-          options.diff = next;
-          i += 1;
+        if (inline !== undefined && inline !== '') {
+          options.diff = inline;
         } else {
-          options.diff = 'HEAD';
+          const next = argv[i + 1];
+          if (next && !next.startsWith('-')) {
+            options.diff = next;
+            i += 1;
+          } else {
+            options.diff = 'HEAD';
+          }
         }
         break;
       }
@@ -142,6 +163,7 @@ export function parseArgs(argv) {
 
   if (positional.length > 1) throw new UsageError(`Expected at most one path, got: ${positional.join(', ')}`);
   if (positional.length === 1) options.path = positional[0];
+  if (options.profile && !options.budgetExplicit) options.budget = PROFILES[options.profile];
   return options;
 }
 
@@ -160,7 +182,7 @@ export function formatMarkdown(ctx) {
   const lines = [
     `# Context: ${meta.root}`,
     '',
-    `- Generated: ${meta.generated}`,
+    ...(meta.generated ? [`- Generated: ${meta.generated}`] : []),
     `- Mode: ${meta.mode}`,
     `- Estimated tokens: ${formatCount(meta.usedTokens)} / ${meta.budget === 0 ? 'unlimited' : formatCount(meta.budget)}`,
     `- Files: ${meta.included} of ${meta.candidates}${meta.omitted ? ` (${meta.omitted} omitted to fit the budget)` : ''}`,

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `--diff=<ref>` now uses the inline ref instead of falling back to `HEAD`.
+
 ## [0.1.0] - 2026-11-26
 
 ### Added
