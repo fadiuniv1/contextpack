@@ -63,6 +63,20 @@ contextpack --version
 contextpack .
 ~~~
 
+### A verified run
+
+Here is a real terminal session on Windows after installing Node 18+:
+
+~~~text
+PS C:\Users\fadiu\OneDrive\Desktop\New folder> npx contextpack-cli . --budget 8000 -o context.md
+npm notice run npx
+npm notice run contextpack . --budget 8000 -o context.md
+Wrote context.md — 47 files, ~7,998 tokens
+PS C:\Users\fadiu\OneDrive\Desktop\New folder>
+~~~
+
+The budget was respected: 47 candidate files were selected at about 7,998 tokens against an 8,000 token budget. The tool writes the file and reports a one-line summary, which makes it easy to script.
+
 ---
 
 ## Tutorial: from zero to a ready-to-paste context file
