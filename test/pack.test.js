@@ -211,3 +211,26 @@ test('changedFiles resolves an aliased path to the repository root', (t) => {
   const files = changedFiles(alias);
   assert.deepEqual([...files].sort(), ['a.js', 'c.js']);
 });
+
+test('changedFiles works when the root is a subdirectory', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('root.js', 'root');
+  tmp.write('sub/a.js', 'a');
+  const git = (args) => execFileSync('git', args, { cwd: tmp.dir, encoding: 'utf8' });
+  try {
+    git(['init', '-q']);
+    git(['add', '.']);
+    git(['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-q', '-m', 'init']);
+  } catch (error) {
+    t.skip(`git unavailable or commit failed: ${error.message}`);
+    return;
+  }
+
+  tmp.write('root.js', 'changed');
+  tmp.write('sub/a.js', 'changed');
+  tmp.write('sub/new.js', 'new');
+
+  const files = changedFiles(path.join(tmp.dir, 'sub'));
+  assert.deepEqual([...files].sort(), ['a.js', 'new.js']);
+});

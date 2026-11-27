@@ -194,7 +194,7 @@ export function changedFiles(root, ref = 'HEAD') {
   const names = new Set();
   let diffOutput = '';
   try {
-    diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--'], absoluteRoot);
+    diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--', '.'], absoluteRoot);
   } catch {
     throw new Error(`git diff failed for ref "${ref}". Check that the ref exists.`);
   }
@@ -204,11 +204,12 @@ export function changedFiles(root, ref = 'HEAD') {
     if (inRoot(p)) names.add(toRel(p));
   }
 
+  // ls-files reports paths relative to the current directory, so these are
+  // already relative to the requested root.
   const untracked = git(['ls-files', '--others', '--exclude-standard'], absoluteRoot);
   for (const line of untracked.split(/\r?\n/)) {
     if (!line) continue;
-    const p = toPosix(line);
-    if (inRoot(p)) names.add(toRel(p));
+    names.add(toPosix(line));
   }
 
   return names;
