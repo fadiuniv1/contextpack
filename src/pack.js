@@ -198,8 +198,9 @@ export function changedFiles(root, ref = 'HEAD') {
     // Run from the repository root with a POSIX pathspec so Windows path
     // separators cannot change how Git matches files.
     diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--', pathspec], top);
-  } catch {
-    throw new Error(`git diff failed for ref "${ref}". Check that the ref exists.`);
+  } catch (error) {
+    const detail = error.stderr ? String(error.stderr).trim() : error.message;
+    throw new Error(`git diff failed for ref "${ref}". ${detail}`);
   }
   for (const line of diffOutput.split(/\r?\n/)) {
     if (!line) continue;
