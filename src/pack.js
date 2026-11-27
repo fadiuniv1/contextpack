@@ -191,10 +191,13 @@ export function changedFiles(root, ref = 'HEAD') {
   const inRoot = (p) => (prefix ? p.startsWith(`${prefix}/`) : true);
   const toRel = (p) => (prefix ? p.slice(prefix.length + 1) : p);
 
+  const pathspec = prefix ? `${prefix}/` : '.';
   const names = new Set();
   let diffOutput = '';
   try {
-    diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--', '.'], absoluteRoot);
+    // Run from the repository root with a POSIX pathspec so Windows path
+    // separators cannot change how Git matches files.
+    diffOutput = git(['diff', '--name-only', '--diff-filter=ACMR', ref, '--', pathspec], top);
   } catch {
     throw new Error(`git diff failed for ref "${ref}". Check that the ref exists.`);
   }
@@ -204,12 +207,11 @@ export function changedFiles(root, ref = 'HEAD') {
     if (inRoot(p)) names.add(toRel(p));
   }
 
-  // ls-files reports paths relative to the current directory, so these are
-  // already relative to the requested root.
-  const untracked = git(['ls-files', '--others', '--exclude-standard'], absoluteRoot);
+  const untracked = git(['ls-files', '--others', '--exclude-standard', '--', pathspec], top);
   for (const line of untracked.split(/\r?\n/)) {
     if (!line) continue;
-    names.add(toPosix(line));
+    const p = toPosix(line);
+    if (inRoot(p)) names.add(toRel(p));
   }
 
   return names;
