@@ -10,6 +10,11 @@ All notable changes to this project are documented here. This project follows
 
 - `--task` keyword-aware ranking to prioritize files relevant to a specific task.
 
+### Changed
+
+- README rewritten as a step-by-step tutorial with a full option reference, recipes and troubleshooting.
+- CONTRIBUTING updated to require documentation changes alongside behavior changes.
+
 ## [0.1.4] - 2026-11-26
 
 ### Added
