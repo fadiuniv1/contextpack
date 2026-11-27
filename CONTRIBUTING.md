@@ -18,6 +18,18 @@ Node 18+ is required. There are no runtime dependencies and no build step.
 - **Add a test for every behavior change.** `npm test` must pass on Windows, macOS and Linux.
 - **Never upload user code.** Network calls are not acceptable in the core.
 - **Do not weaken secret redaction** without a clear reason and a test.
+- **Keep the documentation honest.** If a flag changes, update the README tutorial and the option table.
+
+## Documentation
+
+The README is the main product surface. It contains a full tutorial, recipes and troubleshooting, so treat it as part of the code:
+
+- new or changed flags belong in the **Command reference** table,
+- new failure modes belong in **Troubleshooting**,
+- new use cases belong in **Recipes**,
+- notable changes belong in `CHANGELOG.md`.
+
+Avoid claiming exact tokenizer counts or guaranteed secret removal. Token counts are local estimates and redaction is a best-effort safety net.
 
 ## Commit messages
 
