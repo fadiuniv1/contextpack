@@ -179,23 +179,20 @@ function git(args, cwd) {
 
 /** Changed files (staged, unstaged and untracked) relative to the given root. */
 export function changedFiles(root, ref = 'HEAD') {
-  const resolvedRoot = path.resolve(root);
-  let absoluteRoot;
-  try {
-    absoluteRoot = fs.realpathSync(resolvedRoot);
-  } catch {
-    absoluteRoot = resolvedRoot;
-  }
+  const absoluteRoot = path.resolve(root);
   let top;
+  let prefix;
   try {
-    top = fs.realpathSync(git(['rev-parse', '--show-toplevel'], absoluteRoot).trim());
+    // Ask Git for the canonical root and prefix. Node paths can keep Windows
+    // 8.3 short names, which do not compare equal to Git's expanded path.
+    top = git(['rev-parse', '--show-toplevel'], absoluteRoot).trim();
+    prefix = toPosix(git(['rev-parse', '--show-prefix'], absoluteRoot).trim());
   } catch {
     throw new Error(`--diff needs a git repository. No git repository found at ${absoluteRoot}.`);
   }
 
-  const prefix = toPosix(path.relative(top, absoluteRoot)).replace(/^\.\/?/, '');
-  const inRoot = (p) => (prefix ? p.startsWith(`${prefix}/`) : true);
-  const toRel = (p) => (prefix ? p.slice(prefix.length + 1) : p);
+  const inRoot = (p) => (prefix ? p.startsWith(prefix) : true);
+  const toRel = (p) => (prefix ? p.slice(prefix.length) : p);
 
   const pathspec = prefix ? `${prefix}/` : '.';
   const names = new Set();
