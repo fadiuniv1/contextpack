@@ -12,6 +12,8 @@
 
 No API keys. No uploads. No runtime dependencies. One command.
 
+Filling a context window to the last token produces a prompt the model cannot answer. contextpack reserves headroom, caps oversized files, and shows their structure instead of silently dropping them.
+
 ---
 
 ## Contents
@@ -19,6 +21,7 @@ No API keys. No uploads. No runtime dependencies. One command.
 - [Why contextpack](#why-contextpack)
 - [Quick start](#quick-start)
 - [Tutorial: from zero to a ready-to-paste context file](#tutorial-from-zero-to-a-ready-to-paste-context-file)
+- [Headroom, file caps and outlines](#headroom-file-caps-and-outlines)
 - [Command reference](#command-reference)
 - [How files are selected](#how-files-are-selected)
 - [Recipes](#recipes)
@@ -35,11 +38,11 @@ No API keys. No uploads. No runtime dependencies. One command.
 Pasting a repository into an LLM by hand means:
 
 - copying files one by one and losing the directory structure,
-- burning your context window on lockfiles, build output and dependencies,
+- burning the context window on lockfiles, build output and dependencies,
 - accidentally including an .env file with real secrets,
 - redoing all of it every time the code changes.
 
-contextpack does that work locally. It walks the tree, respects .gitignore, ranks files by usefulness, redacts common secrets, and emits one Markdown document sized to your token budget.
+contextpack does that work locally. It walks the tree, respects .gitignore, ranks files by usefulness, redacts common secrets, reserves space for your question and the answer, and emits one Markdown document sized to your token budget.
 
 ---
 
@@ -51,8 +54,8 @@ Requirements: **Node.js 18+**. Nothing else. Git is only needed for the --diff o
 # Run it without installing anything
 npx contextpack-cli .
 
-# Or write the result to a file you can paste into your AI tool
-npx contextpack-cli . -o context.md
+# Write a ready-to-paste file, with your question included
+npx contextpack-cli . --budget 8000 --ask "Where is the bug?" -o context.md
 ~~~
 
 The npm package is named **contextpack-cli** because the plain name was taken. The command you run is still **contextpack** if you install it globally:
@@ -65,17 +68,26 @@ contextpack .
 
 ### A verified run
 
-Here is a real terminal session on Windows after installing Node 18+:
+Real terminal output on Windows (Node 18+):
 
 ~~~text
 PS C:\Users\fadiu\OneDrive\Desktop\New folder> npx contextpack-cli . --budget 8000 -o context.md
-npm notice run npx
-npm notice run contextpack . --budget 8000 -o context.md
 Wrote context.md — 47 files, ~7,998 tokens
-PS C:\Users\fadiu\OneDrive\Desktop\New folder>
 ~~~
 
-The budget was respected: 47 candidate files were selected at about 7,998 tokens against an 8,000 token budget. The tool writes the file and reports a one-line summary, which makes it easy to script.
+That was version 0.1.5: the file used the entire budget. Version 0.2.0 reports the same project like this:
+
+~~~text
+Wrote context.md — 18 files, ~7,033 tokens, 960 reserved, 5 outlines
+~~~
+
+The generated file now starts with:
+
+~~~text
+- Estimated tokens: 7,033 / 8,000
+- Reserved: ~960 tokens for your question and the answer
+- Files: 18 of 21 (5 as outlines) (3 omitted: 1 over per-file cap, 2 budget)
+~~~
 
 ---
 
@@ -91,46 +103,23 @@ You need v18 or newer. If the command is not found, install Node from nodejs.org
 
 ### Step 2: Run it on a repository
 
-Change into the project you want to explain to an AI, then run:
-
 ~~~bash
 cd /path/to/your/project
 npx contextpack-cli .
 ~~~
 
-The first run downloads the package once, then prints a document like this:
+The first run downloads the package once, then prints a document with a header, a directory tree of selected files, a contents list, and each file inside a fenced code block.
 
-~~~text
-# Context: my-app
+Read the header first. It tells you how many candidate files were found, how many made it in, how many are outlines, and roughly how many tokens you will spend.
 
-- Generated: 2026-11-26T16:35:16.860Z
-- Mode: full
-- Estimated tokens: 824 / 8000
-- Files: 4 of 13 (9 omitted to fit the budget)
-
-> Token counts are local estimates. No code was uploaded.
-
-## Structure
-...
-## Contents
-
-- src/tokens.js — ~203 tokens
-- src/redact.js — ~333 tokens
-- package.json — ~259 tokens
-- bin/contextpack.js — ~29 tokens
-~~~
-
-Then each selected file is printed inside a fenced code block with its relative path as the heading.
-
-**Read the header first.** It tells you how many candidate files were found, how many made it in, and roughly how many tokens you will spend.
-
-### Step 3: Save it instead of printing it
+### Step 3: Save it and add your question
 
 ~~~bash
 npx contextpack-cli . -o context.md
+npx contextpack-cli . --ask "Explain the auth flow and suggest a fix" -o context.md
 ~~~
 
-The file is written to your current directory. Open it, skim the Contents list, and paste it into ChatGPT, Claude, Gemini or your coding agent. Add your question after the pasted document.
+With --ask, the generated file ends with a Question section. You can paste the whole file into ChatGPT, Claude, Gemini or a coding agent without typing your question again. The reserved headroom is what leaves room for the answer.
 
 ### Step 4: Inspect the candidate list before packing
 
@@ -138,7 +127,7 @@ The file is written to your current directory. Open it, skim the Contents list, 
 npx contextpack-cli . --list
 ~~~
 
-This prints every candidate file with its token cost, line count and whether it was included. It is the fastest way to answer "why was my file left out?" or "why is this huge file in here?".
+This prints every candidate file with its token cost, line count and status: yes, outline or no. It is the fastest way to answer "why was my file left out?".
 
 ### Step 5: Set a budget that matches your model
 
@@ -153,7 +142,7 @@ npx contextpack-cli . --profile 32k -o context.md
 npx contextpack-cli . --budget 0 -o context.md
 ~~~
 
-Presets are 8k, 32k, 128k and 200k. The default is 8000. Files are added until the budget is full; low-priority files are dropped rather than truncated mid-function. One file is always included even if it alone exceeds the budget, so you never get an empty result.
+Presets are 8k, 32k, 128k and 200k. The default is 8000. Files are added until the usable budget is full; low-priority files are dropped or outlined rather than truncating your important ones mid-function. One file is always included even if it alone exceeds the budget, so you never get an empty result.
 
 Token counts are **local estimates** from a character and punctuation heuristic, roughly plus or minus 15 percent versus a real tokenizer. They never call an API.
 
@@ -171,17 +160,12 @@ npx contextpack-cli . --include '*.py' -o context.md
 
 # Skip generated files
 npx contextpack-cli . --exclude 'generated/**' -o context.md
-~~~
 
-Glob rules: patterns without a slash match at any depth, so *.py behaves like a gitignore pattern. Patterns with a slash are anchored to the repository root. Asterisks, double asterisks, question marks and character classes are supported.
-
-There is also a task-aware ranking option (available from version 0.1.5):
-
-~~~bash
+# Boost files about a specific task
 npx contextpack-cli . --task "fix auth token refresh" -o context.md
 ~~~
 
-It boosts files whose path or contents mention the keywords.
+Glob rules: patterns without a slash match at any depth, so *.py behaves like a gitignore pattern. Patterns with a slash are anchored to the repository root. Asterisks, double asterisks, question marks and character classes are supported. --task keywords also influence which lines survive in an outline.
 
 ### Step 7: Pack only your changes
 
@@ -203,17 +187,12 @@ npx contextpack-cli . --diff=main -o pr-context.md
 ### Step 8: Choose an output format
 
 ~~~bash
-# Default: Markdown with headings and fenced code blocks
 npx contextpack-cli . --format markdown -o context.md
-
-# Plain text, one section per file
 npx contextpack-cli . --format plain -o context.txt
-
-# Machine-readable JSON for your own tooling
 npx contextpack-cli . --format json -o context.json
 ~~~
 
-JSON includes meta, files (path, tokens, lines, content) and omitted (path, tokens).
+Markdown is the default and includes headings, fenced code blocks and the question section. Plain text uses one section per file. JSON includes meta, files (path, tokens, lines, content, outlined, originalTokens) and omitted files with a reason.
 
 ### Step 9: Check secret redaction
 
@@ -241,18 +220,49 @@ npm install contextpack-cli
 ~~~
 
 ~~~js
-import { buildContext, DEFAULT_BUDGET } from 'contextpack';
+import { buildContext } from 'contextpack';
 import { formatMarkdown } from 'contextpack/cli';
 
 const ctx = buildContext('.', {
-  budget: DEFAULT_BUDGET,
+  budget: 8000,
   focus: ['src/**'],
-  diff: 'main',
+  reserve: 960,
+  maxFileTokens: 1760,
+  ask: 'Where is the bug?',
 });
 console.log(formatMarkdown(ctx));
 ~~~
 
 buildContext returns plain data, so you can pass it to your own formatter or agent.
+
+---
+
+## Headroom, file caps and outlines
+
+### Headroom
+
+By default, 12% of the budget (up to 4000 tokens) is left unused for your question and the model's answer. For an 8k budget that is 960 tokens. This is deliberate: a prompt that consumes the entire window gives the model nowhere to think.
+
+~~~bash
+npx contextpack-cli . --reserve 2000 -o context.md
+npx contextpack-cli . --no-reserve -o context.md
+~~~
+
+### Per-file cap
+
+A single huge file can otherwise swallow the entire budget. By default, no file may use more than 25% of the usable budget. Files above the cap are not dropped outright — they are replaced by a structural outline containing imports, definitions, headings, task-relevant lines and a clear marker.
+
+~~~bash
+npx contextpack-cli . --max-file-tokens 500 -o context.md
+npx contextpack-cli . --max-file-tokens 0 -o context.md
+npx contextpack-cli . --no-outline -o context.md
+~~~
+
+Setting the cap to 0 disables it. --no-outline skips oversized files instead of outlining them. Outlines are an approximation, not a lossless compression: when an outline is shown, the output says so and tells you how to get the full file.
+
+### Why this combination works
+
+This follows the same idea as aider's repository map: give the model a compact structural view first, then let it ask for the files it needs. Headroom, caps and outlines together mean the generated document is a usable prompt rather than a full window of raw text.
 
 ---
 
@@ -263,14 +273,19 @@ buildContext returns plain data, so you can pass it to your own formatter or age
 | path (positional) | Directory to pack. Defaults to the current directory. |
 | -o, --out FILE | Write to a file instead of stdout. |
 | -b, --budget N | Token budget. 0 means unlimited. Default 8000. |
+| --reserve N | Tokens left for the question and answer. Default 12%, max 4000. |
+| --no-reserve | Use the whole budget for files (not recommended). |
+| --max-file-tokens N | Cap each file. 0 disables the cap. Default 25% of usable budget. |
+| --no-outline | Skip oversized files instead of showing an outline. |
+| --ask TEXT | Append a ready-to-paste Question section. |
 | --profile NAME | Preset budget: 8k, 32k, 128k or 200k. |
-| --task TEXT | Boost files relevant to a task (0.1.5+). |
+| --task TEXT | Boost files and outline lines relevant to a task. |
 | -f, --focus GLOB | Prioritize matching files. Repeatable. |
 | -i, --include GLOB | Only consider matching files. Repeatable. |
 | -e, --exclude GLOB | Skip matching files. Repeatable. |
 | --diff [REF] | Pack only changed files. Defaults to HEAD. Accepts --diff=REF. |
 | --format FMT | markdown, plain or json. Default markdown. |
-| --list | List candidate files and token costs instead of packing. |
+| --list | List candidates with token costs and status instead of packing. |
 | --max-lines N | Truncate files longer than N lines. Default 2000. |
 | --no-gitignore | Ignore .gitignore and .ignore rules. |
 | --no-redact | Disable secret redaction. |
@@ -282,14 +297,20 @@ buildContext returns plain data, so you can pass it to your own formatter or age
 
 ## How files are selected
 
-Files are scored, sorted by score and then by size, and added until the budget is full.
+Files are scored, sorted by score and then by size, and processed in that order.
 
 1. Changed files from --diff and --focus matches get the highest priority.
 2. Source code ranks above documentation, then configuration, then everything else.
 3. Root-level README.md, AGENTS.md, CLAUDE.md, package.json, Dockerfile, Makefile and similar files get a bonus.
 4. Test, fixture and snapshot files rank slightly lower.
 5. Shallower files rank above deeply nested ones; smaller files win ties.
-6. With --task, keyword matches in path or contents add up to 1500 points.
+6. --task keyword matches add up to 1500 points and influence outline line selection.
+
+Each file then follows this path:
+
+- If it fits the remaining usable budget and the per-file cap, include it in full.
+- If it is too large but an outline fits, include the outline and mark it as such.
+- Otherwise omit it and record the reason: "over per-file cap" or "budget".
 
 Automatically skipped: .git, node_modules, dist, build, coverage, .next, virtualenvs, lockfiles, binary files, images, archives and anything matched by .gitignore or .ignore, including nested ignore files. Hidden files are skipped except .env.example and .env.sample. Files larger than 512 KB and more than 3000 candidate files are also excluded.
 
@@ -298,19 +319,25 @@ Automatically skipped: .git, node_modules, dist, build, coverage, .next, virtual
 ## Recipes
 
 ~~~bash
-# Whole repo, ready to paste
+# Whole repo, ready to paste, with headroom
 npx contextpack-cli . -o context.md
+
+# Ready-to-paste prompt with a question
+npx contextpack-cli . --ask "Where is the bug?" -o context.md
 
 # Only what changed in this branch, for a review prompt
 npx contextpack-cli . --diff main --focus 'src/**' -o pr-context.md
 
-# Only Python source, hard budget
-npx contextpack-cli ./src --include '*.py' --budget 4000 -o context.md
+# Only Python source, hard budget, no outlines
+npx contextpack-cli ./src --include '*.py' --budget 4000 --no-outline -o context.md
+
+# Full files, no cap, no reserve
+npx contextpack-cli . --max-file-tokens 0 --no-reserve -o context.md
 
 # See what would be included before committing
 npx contextpack-cli . --list
 
-# Machine-readable output
+# Machine-readable output with omission reasons
 npx contextpack-cli . --format json -o context.json
 
 # Reproducible, no timestamp
@@ -329,11 +356,13 @@ npx contextpack-cli . --no-date -o context.md
 
 **No changed text files found** — --diff only includes text files that are modified, staged or untracked. Commit or stage something first, or use a full pack.
 
-**Everything is included but the file is huge** — use --budget or --profile, and check --list to see which big files are winning.
+**My file became an outline** — it exceeded the per-file cap. Use --max-file-tokens 0 to include full files, or --focus that file so it ranks higher.
+
+**Almost everything is omitted** — lower the reserve with --reserve, raise the budget, or use --include to narrow the candidate set.
 
 **A secret was still included** — redaction is pattern-based. Review the output and remove anything sensitive manually before sharing.
 
-**My token count differs from the model** — estimates are local and approximate. Leave headroom for the answer, especially with small budgets.
+**My token count differs from the model** — estimates are local and approximate. The default reserve absorbs most of that error, but leave headroom for long answers.
 
 ---
 
@@ -346,9 +375,11 @@ contextpack is deliberately narrower:
 | | contextpack | repomix |
 | --- | --- | --- |
 | Runtime dependencies | none | several |
-| Fits output to a token budget | yes, omits low-priority files | guard only, fails if over budget |
+| Reserves output headroom | yes, configurable | no |
+| Fits output to a token budget | yes, omits or outlines low-priority files | guard only, fails if over budget |
 | Only changed files | yes, --diff | adds diffs to the full tree |
-| File relevance ranking | yes | sorts by git change frequency |
+| File relevance ranking | yes, plus task keywords | sorts by git change frequency |
+| Structural outlines | yes, dependency-free | compression available |
 | Exact tokenizer counts | no, local estimate | yes, tiktoken |
 | Output styles | Markdown, plain, JSON | XML, Markdown, JSON, plain and more |
 | Setup | npx contextpack-cli . | npx repomix |
@@ -362,6 +393,7 @@ gitingest and code2prompt are also good options if you prefer their ecosystems o
 - [x] Profile presets for common models
 - [x] Deterministic generation mode
 - [x] .ignore file support
+- [x] Task-aware ranking and outlines
 - [ ] Exact local tokenizer adapters
 - [ ] Git-aware relevance scoring from commit history
 - [ ] Clipboard output

@@ -11,6 +11,12 @@ export const DEFAULT_MAX_BYTES = 512 * 1024;
 export const DEFAULT_MAX_LINES = 2000;
 export const DEFAULT_MAX_FILES = 3000;
 
+// Leave space for the user's question and the model's answer. Filling a
+// context window to the last token produces a prompt the model cannot use.
+export const DEFAULT_RESERVE_RATIO = 0.12;
+export const DEFAULT_RESERVE_MAX = 4000;
+export const DEFAULT_FILE_CAP_RATIO = 0.25;
+
 const SKIP_DIRS = new Set([
   '.git', '.svn', '.hg', 'node_modules', 'dist', 'build', 'out', 'coverage',
   '.next', '.nuxt', '.cache', '.turbo', '.svelte-kit', '.angular', 'vendor',
@@ -268,6 +274,61 @@ function taskRelevance(item, terms) {
   return Math.min(1500, hits * 60);
 }
 
+const DEFINE_LINE = /^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?(?:class|function|def|interface|type|struct|enum|impl|trait|module|namespace|func|const|let|var)\b|^\s*(?:pub|public|private|protected|static|final)\s+|^export\s+|^module\.exports\b/i;
+const IMPORT_LINE = /^\s*(?:import|from|require|using|package|#include)\b/i;
+const HEADING_LINE = /^#{1,6}\s+\S/;
+const MARKER_LINE = /^\s*(?:TODO|FIXME|NOTE|HACK)\b/i;
+
+/** How useful a line is when we can only show a skeleton of the file. */
+function outlineScore(line, index, terms) {
+  const text = line.trim();
+  if (!text) return 0;
+  const lower = text.toLowerCase();
+  if (terms.some((term) => lower.includes(term))) return 7;
+  if (HEADING_LINE.test(text) || DEFINE_LINE.test(text)) return 6;
+  if (IMPORT_LINE.test(text)) return 5;
+  if (MARKER_LINE.test(text)) return 4;
+  if (index < 8 && (text.startsWith('//') || text.startsWith('*') || text.startsWith('/*'))) return 3;
+  return 1;
+}
+
+/**
+ * Produce a compact structural skeleton of a file: imports, definitions,
+ * headings and task-relevant lines. This is a dependency-free approximation
+ * of a repo map. It is never claimed to be lossless.
+ */
+export function buildOutline(text, terms = [], capTokens = Infinity) {
+  const lines = String(text).split(/\r?\n/);
+  const scored = lines.map((line, index) => ({
+    line,
+    index,
+    score: outlineScore(line, index, terms),
+  }));
+
+  let kept = scored.filter((item) => item.score >= 5 || item.index < 3);
+  if (kept.length === 0) kept = scored.filter((item) => item.line.trim()).slice(0, 10);
+  if (kept.length === 0) return null;
+
+  const marker = `\n… [outline only: ${lines.length} lines, run with --max-file-tokens 0 for the full file]`;
+  const render = (picked) => {
+    const ordered = [...picked].sort((a, b) => a.index - b.index).map((item) => item.line);
+    return `${ordered.join('\n')}${marker}`;
+  };
+
+  let outline = render(kept);
+  while (estimateTokens(outline) > capTokens && kept.length > 1) {
+    const removable = kept
+      .filter((item) => item.index >= 3)
+      .sort((a, b) => a.score - b.score || b.index - a.index)[0];
+    if (!removable) break;
+    kept = kept.filter((item) => item !== removable);
+    outline = render(kept);
+  }
+
+  if (estimateTokens(outline) > capTokens) return null;
+  return outline;
+}
+
 /**
  * Build the context object. It is pure data: formatting lives in cli.js so the
  * core can be imported by other tools.
@@ -286,11 +347,28 @@ export function buildContext(root, options = {}) {
     diff = undefined,
     date = true,
     task = '',
+    reserve,
+    maxFileTokens,
+    noOutline = false,
+    ask = '',
   } = options;
 
   if (!Number.isFinite(budget) || budget < 0) throw new Error('budget must be a non-negative number');
   if (!Number.isInteger(maxLines) || maxLines < 1) throw new Error('maxLines must be a positive integer');
+  if (reserve !== undefined && (!Number.isFinite(reserve) || reserve < 0)) throw new Error('reserve must be a non-negative number');
+  if (maxFileTokens !== undefined && (!Number.isFinite(maxFileTokens) || maxFileTokens < 0)) {
+    throw new Error('maxFileTokens must be a non-negative number');
+  }
 
+  const reserved = budget === 0
+    ? 0
+    : reserve === undefined
+      ? Math.min(Math.round(budget * DEFAULT_RESERVE_RATIO), DEFAULT_RESERVE_MAX)
+      : Math.min(reserve, budget);
+  const usable = budget === 0 ? 0 : Math.max(0, budget - reserved);
+  const fileCap = maxFileTokens === undefined
+    ? (budget === 0 ? 0 : Math.max(1, Math.floor(usable * DEFAULT_FILE_CAP_RATIO)))
+    : maxFileTokens;
   const terms = taskTerms(task);
   const changed = diff === undefined ? null : changedFiles(root, diff || 'HEAD');
   let files = collectFiles(root, { include, exclude, respectGitignore, maxBytes, maxFiles });
@@ -329,13 +407,48 @@ export function buildContext(root, options = {}) {
   const selected = [];
   const skipped = [];
   let used = 0;
+  let outlined = 0;
+
   for (const item of items) {
-    if (budget === 0 || used + item.tokens <= budget || selected.length === 0) {
+    const fullFits = (budget === 0 || used + item.tokens <= usable)
+      && (fileCap === 0 || item.tokens <= fileCap);
+
+    if (fullFits) {
       selected.push(item);
       used += item.tokens;
-    } else {
-      skipped.push(item);
+      continue;
     }
+
+    // Keep one file even when the budget is tiny, so the output is never empty.
+    if (selected.length === 0) {
+      const content = fileCap > 0 && !noOutline
+        ? buildOutline(item.content, terms, fileCap) || item.content
+        : item.content;
+      const tokens = estimateTokens(content);
+      selected.push({ ...item, content, tokens, outlined: content !== item.content, originalTokens: item.tokens });
+      if (content !== item.content) outlined += 1;
+      used += tokens;
+      continue;
+    }
+
+    if (fileCap > 0 && !noOutline) {
+      const room = usable - used;
+      if (room > 0) {
+        const outline = buildOutline(item.content, terms, Math.min(fileCap, room));
+        if (outline) {
+          const tokens = estimateTokens(outline);
+          selected.push({ ...item, content: outline, tokens, outlined: true, originalTokens: item.tokens });
+          outlined += 1;
+          used += tokens;
+          continue;
+        }
+      }
+    }
+
+    skipped.push({
+      ...item,
+      reason: fileCap > 0 && item.tokens > fileCap ? 'over per-file cap' : 'budget',
+    });
   }
 
   return {
@@ -344,13 +457,22 @@ export function buildContext(root, options = {}) {
       generated: date ? new Date().toISOString() : null,
       structure: fileTree(selected.map((item) => item.rel)),
       budget,
+      reserved,
+      usable,
+      maxFileTokens: fileCap,
       usedTokens: used,
       totalTokens: items.reduce((sum, item) => sum + item.tokens, 0),
       candidates: items.length,
       included: selected.length,
+      outlined,
       omitted: skipped.length,
+      omittedByReason: skipped.reduce((acc, file) => {
+        acc[file.reason] = (acc[file.reason] || 0) + 1;
+        return acc;
+      }, {}),
       mode: changed ? 'diff' : 'full',
       task: task || null,
+      ask: ask || null,
     },
     files: selected,
     skipped,

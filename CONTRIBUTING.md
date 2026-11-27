@@ -27,7 +27,10 @@ The README is the main product surface. It contains a full tutorial, recipes and
 - new or changed flags belong in the **Command reference** table,
 - new failure modes belong in **Troubleshooting**,
 - new use cases belong in **Recipes**,
+- changes to budgeting, caps or outlines belong in **Headroom, file caps and outlines**,
 - notable changes belong in `CHANGELOG.md`.
+
+Budget behavior is part of the product: when changing reserve, file caps or outlines, add a test that asserts the generated metadata and the CLI summary line.
 
 Avoid claiming exact tokenizer counts or guaranteed secret removal. Token counts are local estimates and redaction is a best-effort safety net.
 

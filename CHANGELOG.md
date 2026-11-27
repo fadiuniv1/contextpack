@@ -6,6 +6,20 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-27
+
+### Added
+
+- Headroom by default: 12% of the budget (max 4000 tokens) is reserved for the question and the answer. Configure with \`--reserve\` or disable with \`--no-reserve\`.
+- Per-file token cap (25% of the usable budget) with dependency-free structural outlines for oversized files. Configure with \`--max-file-tokens\`, disable outlines with \`--no-outline\`.
+- \`--ask TEXT\` appends a ready-to-paste Question section to the output.
+- JSON output now records \`outlined\`, \`originalTokens\` and the reason each file was omitted.
+- Markdown header reports reserved tokens, outlines and omission reasons.
+
+### Changed
+
+- The CLI summary now reports used, reserved and outlined tokens instead of a bare token count.
+
 ## [0.1.5] - 2026-11-27
 
 ### Added

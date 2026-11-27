@@ -1,6 +1,6 @@
 {
   "name": "contextpack-cli",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Pack a repository into a token-budgeted Markdown file for LLMs and coding agents. Zero dependencies.",
   "type": "module",
   "bin": {

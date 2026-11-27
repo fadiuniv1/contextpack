@@ -3,7 +3,7 @@ import path from 'node:path';
 import { buildContext, DEFAULT_BUDGET, DEFAULT_MAX_LINES } from './pack.js';
 import { languageOf } from './pack.js';
 
-const VERSION = '0.1.5';
+const VERSION = '0.2.0';
 
 const PROFILES = { '8k': 8000, '32k': 32000, '128k': 128000, '200k': 200000 };
 
@@ -15,6 +15,11 @@ Usage:
 Options:
   -o, --out <file>       Write to a file instead of stdout
   -b, --budget <n>       Token budget, 0 = unlimited (default: ${DEFAULT_BUDGET})
+      --reserve <n>      Tokens left for your question and the answer (default: 12%, max 4000)
+      --no-reserve       Use the whole budget for files (not recommended)
+      --max-file-tokens <n>  Cap each file; 0 disables the cap (default: 25% of usable budget)
+      --no-outline       Skip oversized files instead of showing a structural outline
+      --ask <text>       Append a ready-to-paste question section
       --profile <name>   8k | 32k | 128k | 200k preset budget
       --task <text>      Boost files relevant to a task, e.g. "fix auth token refresh"
   -f, --focus <glob>     Prioritize matching files (repeatable)
@@ -62,6 +67,10 @@ export function parseArgs(argv) {
     date: true,
     profile: null,
     task: '',
+    reserve: undefined,
+    maxFileTokens: undefined,
+    noOutline: false,
+    ask: '',
     budgetExplicit: false,
     help: false,
     version: false,
@@ -99,6 +108,21 @@ export function parseArgs(argv) {
       case '--budget':
         options.budget = number(take(), 'budget');
         options.budgetExplicit = true;
+        break;
+      case '--reserve':
+        options.reserve = number(take(), 'reserve');
+        break;
+      case '--no-reserve':
+        options.reserve = 0;
+        break;
+      case '--max-file-tokens':
+        options.maxFileTokens = number(take(), 'max-file-tokens');
+        break;
+      case '--no-outline':
+        options.noOutline = true;
+        break;
+      case '--ask':
+        options.ask = take();
         break;
       case '--profile': {
         const name = take().toLowerCase();
@@ -190,9 +214,10 @@ export function formatMarkdown(ctx) {
     ...(meta.generated ? [`- Generated: ${meta.generated}`] : []),
     `- Mode: ${meta.mode}`,
     `- Estimated tokens: ${formatCount(meta.usedTokens)} / ${meta.budget === 0 ? 'unlimited' : formatCount(meta.budget)}`,
-    `- Files: ${meta.included} of ${meta.candidates}${meta.omitted ? ` (${meta.omitted} omitted to fit the budget)` : ''}`,
+    ...(meta.reserved ? [`- Reserved: ~${formatCount(meta.reserved)} tokens for your question and the answer`] : []),
+    `- Files: ${meta.included} of ${meta.candidates}${meta.outlined ? ` (${meta.outlined} as outlines)` : ''}${meta.omitted ? ` (${meta.omitted} omitted: ${Object.entries(meta.omittedByReason || {}).map(([reason, count]) => `${count} ${reason}`).join(', ')})` : ''}`,
     '',
-    '> Token counts are local estimates. No code was uploaded.',
+    '> Token counts are local estimates. No code was uploaded. Review the output before sharing it.',
     '',
     ...(meta.structure ? ['## Structure', '', '```', meta.structure, '```', ''] : []),
     '## Contents',
@@ -200,7 +225,7 @@ export function formatMarkdown(ctx) {
   ];
 
   for (const file of files) {
-    lines.push(`- \`${file.rel}\` — ~${formatCount(file.tokens)} tokens`);
+    lines.push(`- \`${file.rel}\` — ~${formatCount(file.tokens)} tokens${file.outlined ? ' (outline)' : ''}`);
   }
 
   for (const file of files) {
@@ -210,11 +235,16 @@ export function formatMarkdown(ctx) {
     lines.push(`${fence}${lang}`, file.content.replace(/\s+$/, ''), fence);
   }
 
+  if (meta.ask) {
+    lines.push('', '---', '', '## Question', '', String(meta.ask));
+  }
+
   return `${lines.join('\n')}\n`;
 }
 
 export function formatPlain(ctx) {
-  const parts = ctx.files.map((file) => `===== ${file.rel} (~${file.tokens} tokens) =====\n${file.content.replace(/\s+$/, '')}`);
+  const parts = ctx.files.map((file) => `===== ${file.rel} (~${file.tokens} tokens)${file.outlined ? ' [outline]' : ''} =====\n${file.content.replace(/\s+$/, '')}`);
+  if (ctx.meta.ask) parts.push(`===== Question =====\n${ctx.meta.ask}`);
   return `${parts.join('\n\n')}\n`;
 }
 
@@ -226,8 +256,10 @@ export function formatJson(ctx) {
       tokens: file.tokens,
       lines: file.lines,
       content: file.content,
+      outlined: Boolean(file.outlined),
+      originalTokens: file.originalTokens ?? file.tokens,
     })),
-    omitted: ctx.skipped.map((file) => ({ path: file.rel, tokens: file.tokens })),
+    omitted: ctx.skipped.map((file) => ({ path: file.rel, tokens: file.tokens, reason: file.reason })),
   }, null, 2)}\n`;
 }
 
@@ -239,7 +271,7 @@ export function formatList(ctx) {
     '-'.repeat(width + 30),
   ];
   for (const file of all) {
-    const included = ctx.files.includes(file) ? 'yes' : 'no ';
+    const included = file.outlined ? 'outline' : ctx.files.includes(file) ? 'yes' : 'no ';
     lines.push(
       `${file.rel.padEnd(width)}  ${formatCount(file.tokens).padStart(7)}  ${String(file.lines).padStart(6)}  ${included}`,
     );
@@ -278,6 +310,10 @@ export function main(argv) {
       redact: options.redact,
       date: options.date,
       task: options.task,
+      reserve: options.reserve,
+      maxFileTokens: options.maxFileTokens,
+      noOutline: options.noOutline,
+      ask: options.ask,
     });
 
     const output = options.list
@@ -290,7 +326,11 @@ export function main(argv) {
 
     if (options.out) {
       fs.writeFileSync(path.resolve(options.out), output, 'utf8');
-      process.stdout.write(`Wrote ${options.out} — ${ctx.meta.included} files, ~${formatCount(ctx.meta.usedTokens)} tokens\n`);
+      const reserveNote = ctx.meta.reserved ? `, ${formatCount(ctx.meta.reserved)} reserved` : '';
+      const outlineNote = ctx.meta.outlined ? `, ${ctx.meta.outlined} outlines` : '';
+      process.stdout.write(
+        `Wrote ${options.out} — ${ctx.meta.included} files, ~${formatCount(ctx.meta.usedTokens)} tokens${reserveNote}${outlineNote}\n`,
+      );
     } else {
       process.stdout.write(output);
     }
