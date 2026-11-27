@@ -6,6 +6,11 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+### Fixed
+
+- `--ask` text now counts toward the reserved budget, so a long question cannot push the generated prompt past its token budget.
+- `--diff` now resolves aliases and symlinks in the repository path and supports subdirectory roots when computing which files changed.
+
 ## [0.2.0] - 2026-11-27
 
 ### Added

@@ -175,3 +175,62 @@ test('changedFiles finds modified and untracked files', (t) => {
   const ctx = buildContext(tmp.dir, { diff: 'HEAD', budget: 0 });
   assert.deepEqual(ctx.files.map((f) => f.rel).sort(), ['a.js', 'c.js']);
 });
+
+test('changedFiles resolves an aliased path to the repository root', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('a.js', 'a');
+  const git = (args) => execFileSync('git', args, { cwd: tmp.dir, encoding: 'utf8' });
+  try {
+    git(['init', '-q']);
+    git(['add', '.']);
+    git(['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-q', '-m', 'init']);
+  } catch (error) {
+    t.skip(`git unavailable or commit failed: ${error.message}`);
+    return;
+  }
+
+  const alias = path.join(os.tmpdir(), `contextpack-alias-${process.pid}-${Date.now()}`);
+  try {
+    fs.symlinkSync(tmp.dir, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  } catch (error) {
+    t.skip(`cannot create directory alias: ${error.message}`);
+    return;
+  }
+  t.after(() => {
+    try {
+      fs.unlinkSync(alias);
+    } catch {
+      // The alias may already have been removed by the OS.
+    }
+  });
+
+  tmp.write('a.js', 'changed');
+  tmp.write('c.js', 'new');
+
+  const files = changedFiles(alias);
+  assert.deepEqual([...files].sort(), ['a.js', 'c.js']);
+});
+
+test('changedFiles works when the root is a subdirectory', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('root.js', 'root');
+  tmp.write('sub/a.js', 'a');
+  const git = (args) => execFileSync('git', args, { cwd: tmp.dir, encoding: 'utf8' });
+  try {
+    git(['init', '-q']);
+    git(['add', '.']);
+    git(['-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-q', '-m', 'init']);
+  } catch (error) {
+    t.skip(`git unavailable or commit failed: ${error.message}`);
+    return;
+  }
+
+  tmp.write('root.js', 'changed');
+  tmp.write('sub/a.js', 'changed');
+  tmp.write('sub/new.js', 'new');
+
+  const files = changedFiles(path.join(tmp.dir, 'sub'));
+  assert.deepEqual([...files].sort(), ['a.js', 'new.js']);
+});

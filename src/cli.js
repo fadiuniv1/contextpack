@@ -214,7 +214,9 @@ export function formatMarkdown(ctx) {
     ...(meta.generated ? [`- Generated: ${meta.generated}`] : []),
     `- Mode: ${meta.mode}`,
     `- Estimated tokens: ${formatCount(meta.usedTokens)} / ${meta.budget === 0 ? 'unlimited' : formatCount(meta.budget)}`,
-    ...(meta.reserved ? [`- Reserved: ~${formatCount(meta.reserved)} tokens for your question and the answer`] : []),
+    ...(meta.reserved
+      ? [`- Reserved: ~${formatCount(meta.reserved)} tokens for your question and the answer${meta.askTokens ? ` (includes ~${formatCount(meta.askTokens)} for your question)` : ''}`]
+      : []),
     `- Files: ${meta.included} of ${meta.candidates}${meta.outlined ? ` (${meta.outlined} as outlines)` : ''}${meta.omitted ? ` (${meta.omitted} omitted: ${Object.entries(meta.omittedByReason || {}).map(([reason, count]) => `${count} ${reason}`).join(', ')})` : ''}`,
     '',
     '> Token counts are local estimates. No code was uploaded. Review the output before sharing it.',
