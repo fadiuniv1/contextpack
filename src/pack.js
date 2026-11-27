@@ -173,10 +173,16 @@ function git(args, cwd) {
 
 /** Changed files (staged, unstaged and untracked) relative to the given root. */
 export function changedFiles(root, ref = 'HEAD') {
-  const absoluteRoot = path.resolve(root);
+  const resolvedRoot = path.resolve(root);
+  let absoluteRoot;
+  try {
+    absoluteRoot = fs.realpathSync(resolvedRoot);
+  } catch {
+    absoluteRoot = resolvedRoot;
+  }
   let top;
   try {
-    top = git(['rev-parse', '--show-toplevel'], absoluteRoot).trim();
+    top = fs.realpathSync(git(['rev-parse', '--show-toplevel'], absoluteRoot).trim());
   } catch {
     throw new Error(`--diff needs a git repository. No git repository found at ${absoluteRoot}.`);
   }
