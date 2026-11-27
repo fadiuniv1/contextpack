@@ -175,13 +175,13 @@ npx contextpack-cli . --exclude 'generated/**' -o context.md
 
 Glob rules: patterns without a slash match at any depth, so *.py behaves like a gitignore pattern. Patterns with a slash are anchored to the repository root. Asterisks, double asterisks, question marks and character classes are supported.
 
-On the current main branch there is also a task-aware ranking option:
+There is also a task-aware ranking option (available from version 0.1.5):
 
 ~~~bash
 npx contextpack-cli . --task "fix auth token refresh" -o context.md
 ~~~
 
-It boosts files whose path or contents mention the keywords. This is in the repository but not yet in the published 0.1.4 release.
+It boosts files whose path or contents mention the keywords.
 
 ### Step 7: Pack only your changes
 
@@ -264,7 +264,7 @@ buildContext returns plain data, so you can pass it to your own formatter or age
 | -o, --out FILE | Write to a file instead of stdout. |
 | -b, --budget N | Token budget. 0 means unlimited. Default 8000. |
 | --profile NAME | Preset budget: 8k, 32k, 128k or 200k. |
-| --task TEXT | Boost files relevant to a task (main branch). |
+| --task TEXT | Boost files relevant to a task (0.1.5+). |
 | -f, --focus GLOB | Prioritize matching files. Repeatable. |
 | -i, --include GLOB | Only consider matching files. Repeatable. |
 | -e, --exclude GLOB | Skip matching files. Repeatable. |

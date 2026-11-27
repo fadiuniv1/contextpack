@@ -6,6 +6,8 @@ All notable changes to this project are documented here. This project follows
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-11-27
+
 ### Added
 
 - `--task` keyword-aware ranking to prioritize files relevant to a specific task.
