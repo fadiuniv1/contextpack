@@ -164,8 +164,14 @@ export function collectFiles(root, options = {}) {
 }
 
 function git(args, cwd) {
+  // CI runners can export GIT_DIR/GIT_WORK_TREE for their own checkout.
+  // Drop them so the command uses the requested directory.
+  const env = { ...process.env };
+  delete env.GIT_DIR;
+  delete env.GIT_WORK_TREE;
   return execFileSync('git', args, {
     cwd,
+    env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
