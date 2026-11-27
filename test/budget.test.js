@@ -88,6 +88,42 @@ test('--ask appends a ready-to-paste question and JSON records omission reasons'
   assert.ok(json.omitted.every((file) => file.reason));
 });
 
+test('--ask tokens are charged to the reserved budget', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('a.js', 'export const a = 1;\n');
+
+  const question = 'Please explain this file and suggest a careful fix. '.repeat(20);
+  const ctx = buildContext(tmp.dir, { budget: 1000, ask: question });
+
+  assert.ok(ctx.meta.askTokens > 0);
+  assert.equal(ctx.meta.reserved, Math.min(1000, 120 + ctx.meta.askTokens));
+  assert.equal(ctx.meta.usable, 1000 - ctx.meta.reserved);
+  assert.ok(ctx.meta.usedTokens <= ctx.meta.usable);
+  assert.match(formatMarkdown(ctx), /Reserved: ~[\d,]+ tokens for your question and the answer \(includes ~[\d,]+ for your question\)/);
+});
+
+test('--no-reserve still reserves the question itself', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('a.js', 'const a = 1;\n');
+
+  const ctx = buildContext(tmp.dir, { budget: 1000, reserve: 0, ask: 'x'.repeat(400) });
+  assert.equal(ctx.meta.reserved, ctx.meta.askTokens);
+  assert.equal(ctx.meta.usable, 1000 - ctx.meta.askTokens);
+});
+
+test('unlimited budget keeps the question out of the reserve', (t) => {
+  const tmp = tempDir();
+  t.after(tmp.cleanup);
+  tmp.write('a.js', 'const a = 1;\n');
+
+  const ctx = buildContext(tmp.dir, { budget: 0, ask: 'Where is the bug?' });
+  assert.equal(ctx.meta.reserved, 0);
+  assert.equal(ctx.meta.usable, 0);
+  assert.ok(ctx.meta.askTokens > 0);
+});
+
 test('task keywords are prioritized inside outlines', (t) => {
   const tmp = tempDir();
   t.after(tmp.cleanup);

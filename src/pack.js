@@ -360,11 +360,13 @@ export function buildContext(root, options = {}) {
     throw new Error('maxFileTokens must be a non-negative number');
   }
 
-  const reserved = budget === 0
+  const headroom = budget === 0
     ? 0
     : reserve === undefined
       ? Math.min(Math.round(budget * DEFAULT_RESERVE_RATIO), DEFAULT_RESERVE_MAX)
       : Math.min(reserve, budget);
+  const askTokens = ask ? estimateTokens(`## Question\n\n${ask}`) : 0;
+  const reserved = budget === 0 ? 0 : Math.min(budget, headroom + askTokens);
   const usable = budget === 0 ? 0 : Math.max(0, budget - reserved);
   const fileCap = maxFileTokens === undefined
     ? (budget === 0 ? 0 : Math.max(1, Math.floor(usable * DEFAULT_FILE_CAP_RATIO)))
@@ -458,6 +460,7 @@ export function buildContext(root, options = {}) {
       structure: fileTree(selected.map((item) => item.rel)),
       budget,
       reserved,
+      askTokens,
       usable,
       maxFileTokens: fileCap,
       usedTokens: used,

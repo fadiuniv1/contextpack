@@ -119,7 +119,7 @@ npx contextpack-cli . -o context.md
 npx contextpack-cli . --ask "Explain the auth flow and suggest a fix" -o context.md
 ~~~
 
-With --ask, the generated file ends with a Question section. You can paste the whole file into ChatGPT, Claude, Gemini or a coding agent without typing your question again. The reserved headroom is what leaves room for the answer.
+With --ask, the generated file ends with a Question section. You can paste the whole file into ChatGPT, Claude, Gemini or a coding agent without typing your question again. The question's estimated tokens are counted in the reserve, which leaves room for the answer.
 
 ### Step 4: Inspect the candidate list before packing
 
@@ -241,7 +241,7 @@ buildContext returns plain data, so you can pass it to your own formatter or age
 
 ### Headroom
 
-By default, 12% of the budget (up to 4000 tokens) is left unused for your question and the model's answer. For an 8k budget that is 960 tokens. This is deliberate: a prompt that consumes the entire window gives the model nowhere to think.
+By default, 12% of the budget (up to 4000 tokens) is left unused for your question and the model's answer. For an 8k budget that is 960 tokens. This is deliberate: a prompt that consumes the entire window gives the model nowhere to think. When `--ask` is used, its estimated tokens are added to the reserved amount, so the pasted question does not eat into the space left for the answer.
 
 ~~~bash
 npx contextpack-cli . --reserve 2000 -o context.md
@@ -277,7 +277,7 @@ This follows the same idea as aider's repository map: give the model a compact s
 | --no-reserve | Use the whole budget for files (not recommended). |
 | --max-file-tokens N | Cap each file. 0 disables the cap. Default 25% of usable budget. |
 | --no-outline | Skip oversized files instead of showing an outline. |
-| --ask TEXT | Append a ready-to-paste Question section. |
+| --ask TEXT | Append a ready-to-paste Question section. Its estimated tokens are included in the reserved budget. |
 | --profile NAME | Preset budget: 8k, 32k, 128k or 200k. |
 | --task TEXT | Boost files and outline lines relevant to a task. |
 | -f, --focus GLOB | Prioritize matching files. Repeatable. |
